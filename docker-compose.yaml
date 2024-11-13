@@ -1,0 +1,154 @@
+version: '3.8'
+
+services:
+  # VIP Manager (HAProxy) สำหรับการจัดการ Read-Write Query
+  vip-manager:
+    image: haproxy:latest
+    container_name: vip-manager
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg
+    networks:
+      - postgres-cluster
+    depends_on:
+      - postgres-master-1
+      - postgres-master-2
+      - postgres-slave-1
+      - postgres-slave-2
+      - postgres-slave-3
+      - postgres-slave-4
+
+  # Master Database Node 1
+  postgres-master-1:
+    image: postgres:15
+    container_name: postgres-master-1
+    environment:
+      POSTGRES_USER: masteruser
+      POSTGRES_PASSWORD: masterpass
+      POSTGRES_DB: mydatabase
+    volumes:
+      - ./master1_data:/var/lib/postgresql/data
+      - ./postgres-master-1.conf:/var/lib/postgresql/data/postgresql.conf
+    networks:
+      - postgres-cluster
+    ports:
+      - "5432:5432"
+
+  # Master Database Node 2 (ใช้ในกรณีที่ต้องการ Synchronous Replication และ Failover)
+  postgres-master-2:
+    image: postgres:15
+    container_name: postgres-master-2
+    environment:
+      POSTGRES_USER: masteruser
+      POSTGRES_PASSWORD: masterpass
+      POSTGRES_DB: mydatabase
+    volumes:
+      - ./master2_data:/var/lib/postgresql/data
+      - ./postgres-master-2.conf:/var/lib/postgresql/data/postgresql.conf
+    networks:
+      - postgres-cluster
+    depends_on:
+      - postgres-master-1
+
+  # Slave Database Nodes (4 ตัว)
+  postgres-slave-1:
+    image: postgres:15
+    container_name: postgres-slave-1
+    environment:
+      POSTGRES_USER: masteruser
+      POSTGRES_PASSWORD: masterpass
+      POSTGRES_DB: mydatabase
+    volumes:
+      - ./slave1_data:/var/lib/postgresql/data
+    networks:
+      - postgres-cluster
+    depends_on:
+      - postgres-master-1
+
+  postgres-slave-2:
+    image: postgres:15
+    container_name: postgres-slave-2
+    environment:
+      POSTGRES_USER: masteruser
+      POSTGRES_PASSWORD: masterpass
+      POSTGRES_DB: mydatabase
+    volumes:
+      - ./slave2_data:/var/lib/postgresql/data
+    networks:
+      - postgres-cluster
+    depends_on:
+      - postgres-master-1
+
+  postgres-slave-3:
+    image: postgres:15
+    container_name: postgres-slave-3
+    environment:
+      POSTGRES_USER: masteruser
+      POSTGRES_PASSWORD: masterpass
+      POSTGRES_DB: mydatabase
+    volumes:
+      - ./slave3_data:/var/lib/postgresql/data
+    networks:
+      - postgres-cluster
+    depends_on:
+      - postgres-master-1
+
+  postgres-slave-4:
+    image: postgres:15
+    container_name: postgres-slave-4
+    environment:
+      POSTGRES_USER: masteruser
+      POSTGRES_PASSWORD: masterpass
+      POSTGRES_DB: mydatabase
+    volumes:
+      - ./slave4_data:/var/lib/postgresql/data
+    networks:
+      - postgres-cluster
+    depends_on:
+      - postgres-master-1
+
+  # Prometheus Monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yaml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      - postgres-cluster
+
+  # Grafana Dashboard
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - postgres-cluster
+    depends_on:
+      - prometheus
+
+  # Postgres Exporter for Prometheus
+  postgres-exporter:
+    image: wrouesnel/postgres_exporter
+    container_name: postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://masteruser:masterpass@postgres-master-1:5432/mydatabase?sslmode=disable"
+    networks:
+      - postgres-cluster
+    depends_on:
+      - postgres-master-1
+
+networks:
+  postgres-cluster:
+    driver: bridge
+
+# volumes:
+#   master1_data:
+#   master2_data:
+#   slave1_data:
+#   slave2_data:
+#   slave3_data:
+#   slave4_data:
